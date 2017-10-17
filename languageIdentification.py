@@ -230,9 +230,9 @@ class languageIdentification(object):
 
 def debug(filename):
     ftrain = open(filename, 'r')
-    solution = languageIdentification(ftrain, 50, 0.1)
+    solution = languageIdentification(ftrain, 10, 0.1)
     print "************************************train************************************"
-    solution.trainNN(3)
+    solution.trainNN(100)
     #print solution.wi.shape
     #print solution.wo.shape
     ftrain.close()
