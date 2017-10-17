@@ -6,6 +6,7 @@ from sklearn import preprocessing
 from sklearn.preprocessing.label import LabelBinarizer
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 import numpy as np
+import matplotlib.pyplot as pl
 np.set_printoptions(threshold=np.nan)
 class languageIdentification(object):
     """
@@ -26,6 +27,7 @@ class languageIdentification(object):
         self.rawResult = []
         self.train, self.result, self.inputlen = self.trainProcessing(trainFile)
         self.v = preprocessing.OneHotEncoder(n_values=self.inputlen)
+        self.train = self.v.fit_transform(self.train).toarray()
         self.input = self.inputlen * 5 + 1
         self.hidden = d
         self.output = 3
@@ -46,7 +48,8 @@ class languageIdentification(object):
         #self.answerLables.fit(["ENGLISH", "FRENCH", "ITALIAN"])
         self.answerLables.fit([1,2,3])
         #print self.answerLables.classes_
-        for line in trainFile.readlines():
+        for line in trainFile:
+            #print line
             space = line.index(" ")
             answer, train = line[:space], line[space + 1:]
             li, ans = self.lineProc(train, answer, True)
@@ -69,7 +72,7 @@ class languageIdentification(object):
 
     def testProcessing(self, testFile):
         prediction_results = []
-        for line in testFile.readlines():
+        for line in testFile:
             test = self.lineProc(line,"", False)
             #for i in xrange(len(test)):
             test = np.array(test)
@@ -158,7 +161,6 @@ class languageIdentification(object):
         return error
 
     def trainNN(self, epoch = 3):
-        self.train = self.v.fit_transform(self.train).toarray()
         for i in xrange(epoch):
             error = 0.0
             trainres = []
@@ -170,8 +172,8 @@ class languageIdentification(object):
                 idx = np.argmax(r) + 1
                 trainres.append(idx)
                 error += self.backPropagate(res)
-            self.evaluate(trainres, self.rawResult)
-            print error
+            accuracy = self.evaluate(trainres, self.rawResult)
+            return accuracy, error
 
     def predict(self, test):
         result = Counter()
@@ -201,14 +203,16 @@ class languageIdentification(object):
         return abs(y - y_hat)**2 * 1.0 / 2
 
     def evaluate(self, predictions, golden):
-        print "accuracy: ", accuracy_score(golden, predictions)
+        res = accuracy_score(golden, predictions)
+        #print "accuracy: ", res
         #print "precision:", precision_score(golden, predictions)
         #print "Recall: ", recall_score(golden, predictions)
+        return res
 
     def debugtestProcessing(self, testFile):
         test_results = []
         prediction_results = []
-        for line in testFile.readlines():
+        for line in testFile:
             space = line.index(" ")
             answer, train = line[:space], line[space + 1:]
             #print answer, train
@@ -228,28 +232,76 @@ class languageIdentification(object):
 
         return prediction_results, test_results
 
-def debug(filename):
-    ftrain = open(filename, 'r')
-    solution = languageIdentification(ftrain, 10, 0.1)
-    print "************************************train************************************"
-    solution.trainNN(100)
-    #print solution.wi.shape
-    #print solution.wo.shape
+    def getFileFeatures(self, content):
+        features = []
+        results = []
+        for line in content:
+            space = line.index(" ")
+            answer, train = line[:space], line[space + 1:]
+            #print answer, train
+            results.append(self.languages[answer.strip()])
+            test = self.lineProc(train,"", False)
+            #for i in xrange(len(test)):
+            test = np.array(test)
+            test = self.trainLabels.transform(test.ravel()).reshape(*test.shape)
+            test = self.v.transform(test).toarray()
+            features.append(test)
+
+        return features, results
+
+    def predictFeatures(self, features):
+        predict_result = []
+        for f in features:
+            res = self.predict(f)
+            predict_result.append(res)
+        return predict_result
+
+def devProcess(trainFilename, devFileName, epoch = 3):
+    trainAccuracy = []
+    devAccuracy = []
+
+    ftrain = open(trainFilename, 'r')
+    train = ftrain.read().strip().split("\n")
     ftrain.close()
-    print "************************************test************************************"
-    ftest = open(filename, 'r')
-    prediction_result, test_results = solution.debugtestProcessing(ftest)
-    print prediction_result
-    print test_results
-    solution.evaluate(prediction_result, test_results)
-    ftest.close()
+
+    solution = languageIdentification(train, 100, 0.1)
+
+    fdev = open(devFileName, 'r')
+    dev = fdev.read().strip().split("\n")
+    fdev.close()
+
+    train_features, train_results = solution.getFileFeatures(train)
+    train_prediction = solution.predictFeatures(train_features)
+    initial_train = solution.evaluate(train_prediction, train_results)
+    trainAccuracy.append(initial_train)
+    print "initial train accuracy: ", initial_train
+
+    dev_features, dev_results = solution.getFileFeatures(dev)
+    dev_prediction = solution.predictFeatures(dev_features)
+    initial_dev = solution.evaluate(dev_prediction, dev_results)
+    devAccuracy.append(initial_dev)
+    print "initial dev accuracy: ", initial_dev
+
+    for i in xrange(epoch):
+        print "************************************epoch:", i + 1, "************************************"
+        trainac, err = solution.trainNN(1)
+        print "train accuracy:", trainac
+        trainAccuracy.append(trainac)
+        dev_prediction = solution.predictFeatures(dev_features)
+        devac = solution.evaluate(dev_prediction, dev_results)
+        print "dev accuracy:", devac
+        devAccuracy.append(devac)
+    x = [0,1,2,3]
+    pl.plot(x, trainAccuracy, 'r--', x, devAccuracy, 'bs')
+    pl.show()
 
 if __name__ == "__main__":
     trainFileName = sys.argv[1]
     devFileName = sys.argv[2]
     testFileName = sys.argv[3]
     resultFileName = sys.argv[4]
-    debug(trainFileName)
+    devProcess(trainFileName, devFileName)
+
     """
     ftrain = open(trainFileName, 'r')
     solution = languageIdentification(ftrain, 3, 0.1)
@@ -268,5 +320,5 @@ if __name__ == "__main__":
     for line in test_results.readlines():
         golden.append(solution.languages[line.strip()])
     solution.evaluate(predictions, golden)
-
     """
+
